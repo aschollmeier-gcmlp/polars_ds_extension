@@ -710,8 +710,7 @@ checksum = "95765f67b4b18863968b4a1bd5bb576f732b29a4a28c7cd84c09fa3e2875f33c"
 [[package]]
 name = "flate2"
 version = "1.0.34"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a1b589b4dc103969ad3cf85c950899926ec64300a1a46d76c03a6072957036f0"
+source = "git+https://github.com/rust-lang/flate2-rs.git?tag=1.0.34#1a28821dc116dac14178858be056e4a58ef8f501"
 dependencies = [
  "crc32fast",
  "miniz_oxide",
@@ -2464,6 +2463,7 @@ dependencies = [
  "cfavml",
  "faer",
  "faer-ext",
+ "flate2",
  "hashbrown 0.15.0",
  "inflections",
  "itertools 0.12.1",

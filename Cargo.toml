@@ -34,6 +34,10 @@ unicode-normalization = "0.1.23"
 # Update to 0.22, when pyo3-polars supports pyo3 0.22
 numpy = "0.21" 
 cfavml = {version = "0.3.0", features=["nightly"]}
+flate2 = {version = "1.0.34", git="https://github.com/rust-lang/flate2-rs.git", tag="1.0.34"}
+
+[patch.crates-io]
+flate2 = {version = "1.0.34", git="https://github.com/rust-lang/flate2-rs.git", tag="1.0.34"}
 
 # Remove this part once I update polars dependency
 [target.'cfg(target_os = "linux")'.dependencies]
