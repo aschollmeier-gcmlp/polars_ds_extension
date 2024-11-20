@@ -186,6 +186,17 @@ fn series_to_mat_for_lstsq(
 
 #[polars_expr(output_type_func=coeff_output)]
 fn pl_lstsq(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series> {
+    if inputs[0].len() < 36 {
+        let mut builder: ListPrimitiveChunkedBuilder<Float64Type> =
+            ListPrimitiveChunkedBuilder::new(
+                "coeffs".into(),
+                1,
+                1,
+                DataType::Float64,
+            );
+        let out = builder.finish();
+        return Ok(out.into_series());
+    }
     let add_bias = kwargs.bias;
     let null_policy = NullPolicy::try_from(kwargs.null_policy)
         .map_err(|e| PolarsError::ComputeError(e.into()))?;
