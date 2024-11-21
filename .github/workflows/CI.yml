@@ -58,7 +58,7 @@ jobs:
       matrix:
         package: [polars_ds_elastic_net]
         os: [ubuntu-latest]
-        architecture: [aarch64]
+        architecture: [x86-64]
 
     steps:
       - uses: actions/checkout@v4
