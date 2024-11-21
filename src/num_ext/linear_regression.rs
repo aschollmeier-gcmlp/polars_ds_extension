@@ -108,6 +108,13 @@ fn series_to_mat_for_lstsq(
     if df.is_empty() {
         return Err(PolarsError::ComputeError("Empty data".into()));
     }
+
+    // MinMax scaling
+    let all_cols_but_first = pl::col("*").exclude([df.get_column_names()[0].clone()]);
+    df = df.lazy().with_column(
+         (all_cols_but_first.clone() - all_cols_but_first.clone().min()) / (all_cols_but_first.clone().max() - all_cols_but_first.clone().min())
+    ).collect()?;
+
     // Add a constant column if add_bias
     if add_bias {
         df = df.lazy().with_column(lit(1f64)).collect()?;
