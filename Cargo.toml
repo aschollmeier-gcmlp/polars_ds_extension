@@ -1,10 +1,10 @@
 [package]
-name = "polars_ds"
-version = "0.6.3"
+name = "polars_ds_elastic_net"
+version = "0.0.1"
 edition = "2021"
 
 [lib]
-name = "_polars_ds"
+name = "_polars_ds_elastic_net"
 crate-type = ["cdylib"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -46,4 +46,4 @@ jemallocator = { version = "0.5", features = ["disable_initial_exec_tls"] }
 [profile.release]
 codegen-units = 1
 strip = "symbols" 
-lto = "fat"
+lto = "thin"

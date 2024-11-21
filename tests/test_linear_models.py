@@ -1,12 +1,12 @@
 import polars as pl
-import polars_ds as pds
+import polars_ds_elastic_net as pds
 import pytest
 import numpy as np
-from polars_ds.linear_models import OnlineLR, ElasticNet
+from polars_ds_elastic_net.linear_models import OnlineLR, ElasticNet
 
 
 def test_lr_null_policies_for_np():
-    from polars_ds.linear_models import _handle_nans_in_np
+    from polars_ds_elastic_net.linear_models import _handle_nans_in_np
 
     size = 5_000
     df = (

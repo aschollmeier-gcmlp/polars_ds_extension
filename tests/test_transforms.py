@@ -1,6 +1,6 @@
 import polars as pl
-import polars_ds as pds
-import polars_ds.transforms as t
+import polars_ds_elastic_net as pds
+import polars_ds_elastic_net.transforms as t
 import pytest
 from polars.testing import assert_frame_equal
 

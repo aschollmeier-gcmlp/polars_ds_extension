@@ -1,9 +1,9 @@
 import polars as pl
-import polars_ds as pds
+import polars_ds_elastic_net as pds
 import numpy as np
 import scipy
 import pytest
-from polars_ds.linear_models import LR
+from polars_ds_elastic_net.linear_models import LR
 from sklearn.linear_model import Lasso, LinearRegression, Ridge
 
 SEED = 208
