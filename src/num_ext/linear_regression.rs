@@ -6,10 +6,12 @@ use crate::linalg::lstsq::{
 use crate::utils::{to_frame, NullPolicy};
 /// Least Squares using Faer and ndarray.
 use core::f64;
-use faer::prelude::*;
-use faer_ext::IntoFaer;
+use std::f64::INFINITY;
+use faer::linalg::zip::MaybeContiguous;
+use faer::{concat, prelude::*};
+use faer_ext::{IntoFaer, IntoNdarray};
 use itertools::Itertools;
-use ndarray::{s, Array2};
+use ndarray::{s, Array2, Axis};
 use polars::prelude as pl;
 use polars::prelude::*;
 use pyo3_polars::derive::polars_expr;
@@ -201,7 +203,6 @@ fn pl_lstsq(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series> {
     let null_policy = NullPolicy::try_from(kwargs.null_policy)
         .map_err(|e| PolarsError::ComputeError(e.into()))?;
 
-    let solver = kwargs.solver.as_str().into();
     let weighted = kwargs.weighted;
     let data_for_matrix = if weighted { &inputs[1..] } else { inputs };
 
@@ -210,33 +211,64 @@ fn pl_lstsq(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series> {
             // Solving Least Square
             let x = mat.slice(s![.., 1..]).into_faer();
             let y = mat.slice(s![.., 0..1]).into_faer();
-            let coeffs = if weighted {
-                let weights = inputs[0].f64().unwrap();
-                let weights = weights.cont_slice().unwrap();
-                if weights.len() != mat.nrows() {
-                    return Err(PolarsError::ComputeError(
-                        "Shape of weights is not the same as the data.".into(),
-                    ));
-                }
-                faer_weighted_lstsq(x, y, weights, solver)
-            } else {
-                match LRMethods::from((kwargs.l1_reg, kwargs.l2_reg)) {
-                    LRMethods::Normal => faer_solve_lstsq(x, y, solver),
-                    LRMethods::L1 => {
-                        faer_coordinate_descent(x, y, kwargs.l1_reg, 0., add_bias, kwargs.tol, 2000)
-                    }
-                    LRMethods::L2 => faer_solve_ridge(x, y, kwargs.l2_reg, add_bias, solver),
-                    LRMethods::ElasticNet => faer_coordinate_descent(
-                        x,
-                        y,
-                        kwargs.l1_reg,
-                        kwargs.l2_reg,
+            let x_arr = x.into_ndarray();
+            let x_centered = &x_arr - &x_arr.mean_axis(Axis(0)).unwrap();
+            let y_arr = y.into_ndarray();
+            let y_centered = &y_arr - y_arr.mean().unwrap();
+            const EPSILON: f64 = 0.001;
+            let Xy = x_centered.t().dot(&y_centered);
+            const L1_RATIO: f64 = 0.5;
+            const NUM_ALPHAS: usize = 100;
+            let alpha_max = Xy.map(|x| x.abs()).iter().fold(-1., |acc, elem| elem.max(acc)) / L1_RATIO;
+            let alphas = ndarray::Array::geomspace(alpha_max, alpha_max * EPSILON, NUM_ALPHAS).unwrap();
+            let mut min_mse = INFINITY;
+            let mut chosen_penalty: Option<f64> = None;
+            for alpha in alphas.into_iter() {
+                let reg_val: f64 = alpha * L1_RATIO; // l1 and l2, since L1_RATIO is fixed at 0.5 for now
+                let mut candidate_mse = 0.;
+                for split_num in 1..=2 {
+                    let (x_train, y_train, x_test, y_test) = match split_num % 2 {
+                        0 => {(
+                            x.subrows(0, 30),
+                            y.subrows(0, 30),
+                            x.subrows(30, 6),
+                            y.subrows(30, 6)
+                        )},
+                        1 => {(
+                            x.subrows(6, 30),
+                            y.subrows(6, 30),
+                            x.subrows(0, 6),
+                            y.subrows(0, 6)
+                        )},
+                        _ => panic!("Not supposed to reach this arm of split_num branch.")
+                    };
+                    let candidate_coeffs = faer_coordinate_descent(
+                        x_train,
+                        y_train,
+                        reg_val, // l1 
+                        reg_val, // l2
                         add_bias,
                         kwargs.tol,
-                        2000,
-                    ),
+                        1000,
+                    );
+                    let pred = x_test * &candidate_coeffs;
+                    let resid = y_test - &pred;
+                    candidate_mse += resid.squared_norm_l2();
                 }
-            };
+                if candidate_mse < min_mse {
+                    min_mse = candidate_mse;
+                    chosen_penalty = Some(reg_val);
+                }
+            }
+            let coeffs = faer_coordinate_descent(
+                x,
+                y,
+                chosen_penalty.unwrap(),
+                chosen_penalty.unwrap(),
+                add_bias,
+                kwargs.tol,
+                2000,
+            );
             let mut builder: ListPrimitiveChunkedBuilder<Float64Type> =
                 ListPrimitiveChunkedBuilder::new(
                     "coeffs".into(),
