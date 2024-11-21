@@ -226,8 +226,10 @@ fn pl_lstsq(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series> {
             let Xy = x_centered.t().dot(&y_centered);
             const L1_RATIO: f64 = 0.5;
             const NUM_ALPHAS: usize = 100;
-            let alpha_max = Xy.map(|x| x.abs()).iter().fold(-1., |acc, elem| elem.max(acc)) / L1_RATIO;
-            let alphas = ndarray::Array::geomspace(alpha_max, alpha_max * EPSILON, NUM_ALPHAS).unwrap();
+            let alpha_max = (Xy.map(|x| x.abs()).iter().fold(-1., |acc, elem| elem.max(acc)) / L1_RATIO).max(
+                f64::MIN_POSITIVE
+            );
+            let alphas = ndarray::Array::geomspace(alpha_max, (alpha_max * EPSILON).max(f64::MIN_POSITIVE), NUM_ALPHAS).unwrap();
             let mut min_mse = INFINITY;
             let mut chosen_penalty: Option<f64> = None;
             const NUM_SPLITS: usize = 5;
