@@ -223,28 +223,71 @@ fn pl_lstsq(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series> {
             let alphas = ndarray::Array::geomspace(alpha_max, alpha_max * EPSILON, NUM_ALPHAS).unwrap();
             let mut min_mse = INFINITY;
             let mut chosen_penalty: Option<f64> = None;
+            const NUM_SPLITS: usize = 5;
             for alpha in alphas.into_iter() {
                 let reg_val: f64 = alpha * L1_RATIO; // l1 and l2, since L1_RATIO is fixed at 0.5 for now
                 let mut candidate_mse = 0.;
-                for split_num in 1..=2 {
-                    let (x_train, y_train, x_test, y_test) = match split_num % 2 {
+                for split_num in 1..=NUM_SPLITS {
+                    let (x_train, y_train, x_test, y_test) = match split_num % NUM_SPLITS {
                         0 => {(
-                            x.subrows(0, 30),
-                            y.subrows(0, 30),
-                            x.subrows(30, 6),
-                            y.subrows(30, 6)
+                            x.subrows(8, 36 - 8).to_owned(),
+                            y.subrows(8, 36 - 8).to_owned(),
+                            x.subrows(0, 8).to_owned(),
+                            y.subrows(0, 8).to_owned()
                         )},
-                        1 => {(
-                            x.subrows(6, 30),
-                            y.subrows(6, 30),
-                            x.subrows(0, 6),
-                            y.subrows(0, 6)
+                        1 => {
+                            let x_train1 = x.subrows(0, 8);
+                            let y_train1 = y.subrows(0, 8);
+                            let x_train2 = x.subrows(15, 36-15);
+                            let y_train2 = y.subrows(15, 36-15);
+                            let x_train_all = concat![[x_train1], [x_train2]];
+                            let y_train_all = concat![[y_train1], [y_train2]];
+                            (
+                                x_train_all,
+                                y_train_all,
+                                x.subrows(8, 7).to_owned(),
+                                y.subrows(8, 7).to_owned(),
+                            )
+                        },
+                        2 => {
+                            let x_train1 = x.subrows(0, 8+7);
+                            let y_train1 = y.subrows(0, 8+7);
+                            let x_train2 = x.subrows(22, 36-22);
+                            let y_train2 = y.subrows(22, 36-22);
+                            let x_train_all = concat![[x_train1], [x_train2]];
+                            let y_train_all = concat![[y_train1], [y_train2]];
+                            (
+                                x_train_all,
+                                y_train_all,
+                                x.subrows(15, 7).to_owned(),
+                                y.subrows(15, 7).to_owned(),
+                            )
+                        },
+                        3 => {
+                            let x_train1 = x.subrows(0, 8+7*2);
+                            let y_train1 = y.subrows(0, 8+7*2);
+                            let x_train2 = x.subrows(29, 36-29);
+                            let y_train2 = y.subrows(29, 36-29);
+                            let x_train_all = concat![[x_train1], [x_train2]];
+                            let y_train_all = concat![[y_train1], [y_train2]];
+                            (
+                                x_train_all,
+                                y_train_all,
+                                x.subrows(22, 7).to_owned(),
+                                y.subrows(22, 7).to_owned(),
+                            )
+                        },
+                        4 => {(
+                            x.subrows(0, 36 - 7).to_owned(),
+                            y.subrows(0, 36 - 7).to_owned(),
+                            x.subrows(29, 7).to_owned(),
+                            y.subrows(29, 7).to_owned()
                         )},
                         _ => panic!("Not supposed to reach this arm of split_num branch.")
                     };
                     let candidate_coeffs = faer_coordinate_descent(
-                        x_train,
-                        y_train,
+                        x_train.as_ref(),
+                        y_train.as_ref(),
                         reg_val, // l1 
                         reg_val, // l2
                         add_bias,
