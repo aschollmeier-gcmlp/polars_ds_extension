@@ -25,6 +25,7 @@ pub(crate) struct LstsqKwargs {
     pub(crate) l1_reg: f64,
     pub(crate) l2_reg: f64,
     pub(crate) tol: f64,
+    pub(crate) max_iter: usize,
     #[serde(default)]
     pub(crate) weighted: bool,
 }
@@ -301,7 +302,7 @@ fn pl_lstsq(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series> {
                         reg_val, // l2
                         add_bias,
                         kwargs.tol,
-                        1000,
+                        kwargs.max_iter,
                     );
                     let pred = x_test * &candidate_coeffs;
                     let resid = y_test - &pred;
@@ -319,7 +320,7 @@ fn pl_lstsq(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series> {
                 chosen_penalty.unwrap(),
                 add_bias,
                 kwargs.tol,
-                2000,
+                kwargs.max_iter,
             );
             let mut builder: ListPrimitiveChunkedBuilder<Float64Type> =
                 ListPrimitiveChunkedBuilder::new(
