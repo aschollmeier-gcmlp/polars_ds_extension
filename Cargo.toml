@@ -14,7 +14,7 @@ pyo3 = {version = "0.21", features = ["abi3-py39", "extension-module"]}
 pyo3-polars = {version = "0.18", features = ["derive", "dtype-array", "dtype-struct"]}
 polars = {version = "0.44.2", features = ["performant", "lazy", 
 "diff", "array_count", "abs", "cross_join", "rank", "ndarray", "log", 
-"cum_agg", "round_series", "nightly","dtype-array", "dtype-struct"], default-features = false}
+"cum_agg", "round_series", "nightly","dtype-array", "dtype-struct", "fmt"], default-features = false}
 num = "0.4.1"
 faer = {version = "0.19", features = ["nightly"]}
 faer-ext = {version = "0.2.0", features = ["ndarray"]}
@@ -35,6 +35,7 @@ unicode-normalization = "0.1.23"
 numpy = "0.21" 
 cfavml = {version = "0.3.0", features=["nightly"]}
 flate2 = {version = "1.0.34", git="https://github.com/rust-lang/flate2-rs.git", tag="1.0.34"}
+rayon = "1.10.0"
 
 [patch.crates-io]
 flate2 = {version = "1.0.34", git="https://github.com/rust-lang/flate2-rs.git", tag="1.0.34"}
@@ -46,4 +47,4 @@ jemallocator = { version = "0.5", features = ["disable_initial_exec_tls"] }
 [profile.release]
 codegen-units = 1
 strip = "symbols" 
-lto = "thin"
+lto = "fat"
