@@ -6,8 +6,6 @@ use crate::linalg::lstsq::{
 use crate::utils::{to_frame, NullPolicy};
 /// Least Squares using Faer and ndarray.
 use core::f64;
-use std::f64::INFINITY;
-use faer::linalg::zip::MaybeContiguous;
 use faer::{concat, prelude::*};
 use faer_ext::{IntoFaer, IntoNdarray};
 use itertools::Itertools;
@@ -27,6 +25,7 @@ pub(crate) struct LstsqKwargs {
     pub(crate) l2_reg: f64,
     pub(crate) tol: f64,
     pub(crate) max_iter: usize,
+    pub(crate) use_new_descent: bool,
     #[serde(default)]
     pub(crate) weighted: bool,
 }
@@ -295,7 +294,8 @@ fn pl_lstsq(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series> {
                             )},
                             _ => panic!("Not supposed to reach this arm of split_num branch.")
                         };
-                        let candidate_coeffs = faer_coordinate_descent(
+                        let candidate_coeffs = if kwargs.use_new_descent {
+                            faer_coordinate_descent(
                             x_train.as_ref(),
                             y_train.as_ref(),
                             reg_val, // l1 
@@ -303,7 +303,18 @@ fn pl_lstsq(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series> {
                             add_bias,
                             kwargs.tol,
                             kwargs.max_iter,
-                        );
+                            )
+                        } else {
+                            faer_coordinate_descent(
+                                x_train.as_ref(),
+                                y_train.as_ref(),
+                                reg_val, // l1 
+                                reg_val, // l2
+                                add_bias,
+                                kwargs.tol,
+                                kwargs.max_iter,
+                            )
+                        };
                         let pred = x_test * &candidate_coeffs;
                         let resid = y_test - &pred;
                         candidate_mse += resid.squared_norm_l2();
@@ -321,15 +332,27 @@ fn pl_lstsq(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series> {
                 }
             ).unwrap().1;
             let chosen_penalty = min_mse_alpha * L1_RATIO;
-            let coeffs = faer_coordinate_descent(
-                x,
-                y,
-                chosen_penalty,
-                chosen_penalty,
-                add_bias,
-                kwargs.tol,
-                kwargs.max_iter,
-            );
+            let coeffs = if kwargs.use_new_descent {
+                faer_coordinate_descent(
+                    x,
+                    y,
+                    chosen_penalty,
+                    chosen_penalty,
+                    add_bias,
+                    kwargs.tol,
+                    kwargs.max_iter,
+                )
+            } else { 
+                faer_coordinate_descent(
+                    x,
+                    y,
+                    chosen_penalty,
+                    chosen_penalty,
+                    add_bias,
+                    kwargs.tol,
+                    kwargs.max_iter,
+                )
+            };
             let mut builder: ListPrimitiveChunkedBuilder<Float64Type> =
                 ListPrimitiveChunkedBuilder::new(
                     "coeffs".into(),

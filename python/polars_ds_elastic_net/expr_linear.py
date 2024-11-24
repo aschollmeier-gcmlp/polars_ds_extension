@@ -104,6 +104,7 @@ def lin_reg(
     l2_reg: float = 0.0,
     tol: float = 1e-5,
     max_iter: int = 2000,
+    use_new_descent: bool = False,
     solver: LRSolverMethods = "qr",
     null_policy: NullPolicy = "skip",
 ) -> pl.Expr:
@@ -205,6 +206,7 @@ def lin_reg(
             "solver": solver,
             "tol": tol,
             "max_iter": max_iter,
+            "use_new_descent": use_new_descent,
             "weighted": weighted,
         }
 
