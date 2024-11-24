@@ -1,7 +1,5 @@
 use crate::linalg::lstsq::{
-    faer_coordinate_descent, faer_recursive_lstsq, faer_rolling_lstsq, faer_rolling_skipping_lstsq,
-    faer_solve_lstsq, faer_solve_lstsq_rcond, faer_solve_ridge, faer_solve_ridge_rcond,
-    faer_weighted_lstsq, ClosedFormLRMethods, LRMethods,
+    faer_coordinate_descent, faer_recursive_lstsq, faer_rolling_lstsq, faer_rolling_skipping_lstsq, faer_solve_lstsq, faer_solve_lstsq_rcond, faer_solve_ridge, faer_solve_ridge_rcond, faer_weighted_lstsq, sklearn_coordinate_descent, ClosedFormLRMethods, LRMethods
 };
 use crate::utils::{to_frame, NullPolicy};
 /// Least Squares using Faer and ndarray.
@@ -295,15 +293,19 @@ fn pl_lstsq(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series> {
                             _ => panic!("Not supposed to reach this arm of split_num branch.")
                         };
                         let candidate_coeffs = if kwargs.use_new_descent {
-                            faer_coordinate_descent(
-                            x_train.as_ref(),
-                            y_train.as_ref(),
-                            reg_val, // l1 
-                            reg_val, // l2
-                            add_bias,
-                            kwargs.tol,
-                            kwargs.max_iter,
-                            )
+                            let non_intercept_betas = sklearn_coordinate_descent(
+                                reg_val * x_train.nrows() as f64,
+                                reg_val * x_train.nrows() as f64,
+                                kwargs.tol, 
+                                kwargs.max_iter, 
+                                (x_train.get(.., ..x_train.ncols()-1).transpose() * &y_train).as_ref(), 
+                                (x_train.get(.., ..x_train.ncols()-1).transpose() * &x_train.get(.., ..x_train.ncols()-1)).as_ref(),
+                            );
+                            let n1 = x_train.ncols()-1;
+                            let xx = unsafe { x_train.get_unchecked(.., 0..n1) };
+                            let bb = unsafe { non_intercept_betas.get_unchecked(0..n1, ..) };
+                            let intercept = (y_train - xx * bb).sum() / x_train.nrows() as f64;
+                            concat![[non_intercept_betas], [mat![[intercept]]]]
                         } else {
                             faer_coordinate_descent(
                                 x_train.as_ref(),
@@ -333,15 +335,19 @@ fn pl_lstsq(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series> {
             ).unwrap().1;
             let chosen_penalty = min_mse_alpha * L1_RATIO;
             let coeffs = if kwargs.use_new_descent {
-                faer_coordinate_descent(
-                    x,
-                    y,
-                    chosen_penalty,
-                    chosen_penalty,
-                    add_bias,
-                    kwargs.tol,
-                    kwargs.max_iter,
-                )
+                let non_intercept_betas = sklearn_coordinate_descent(
+                    chosen_penalty * 36., 
+                    chosen_penalty * 36.,
+                    kwargs.tol, 
+                    kwargs.max_iter, 
+                    (x.get(.., ..x.ncols()-1).transpose() * y).as_ref(), 
+                    (x.get(.., ..x.ncols()-1).transpose() * x.get(.., ..x.ncols()-1)).as_ref(),
+                );
+                let n1 = x.ncols()-1;
+                let xx = unsafe { x.get_unchecked(.., 0..n1) };
+                let bb = unsafe { non_intercept_betas.get_unchecked(0..n1, ..) };
+                let intercept = (y - xx * bb).sum() / x.nrows() as f64;
+                concat![[non_intercept_betas], [mat![[intercept]]]]
             } else { 
                 faer_coordinate_descent(
                     x,

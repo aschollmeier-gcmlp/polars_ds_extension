@@ -755,6 +755,58 @@ pub fn faer_coordinate_descent(
     beta
 }
 
+/// Reference:
+/// https://github.com/scikit-learn/scikit-learn/blob/46a7c9a5e4fe88dfdfd371bf36477f03498a3390/sklearn/linear_model/_cd_fast.pyx#L560
+#[inline(always)]
+pub fn sklearn_coordinate_descent(
+    l1_reg: f64,
+    l2_reg: f64,
+    tol: f64,
+    max_iter: usize,
+    q: MatRef<f64>, // X^T y
+    Q: MatRef<f64>, // Gram matrix (X^T X)
+) -> Mat<f64> {
+    let n_features = Q.shape().0;
+    // Rename penalties to be consistent with original implementation.
+    let alpha = l1_reg;
+    let beta = l2_reg;
+
+    let mut w: Mat<f64> = Mat::zeros(n_features, 1); // initialize weights;
+    let mut H = Q * &w;
+    for iter_num in 0..max_iter {
+        let mut w_max = 0.;
+        let mut d_w_max = 0.;
+        for ii in 0..n_features {
+            let Q_ii_ii = *unsafe { Q.get_unchecked(ii, ii)};
+            if Q_ii_ii == 0. {
+                continue
+            }
+            let w_ii = *unsafe {w.get_unchecked(ii, 0)};
+            let Q_ii = unsafe{Q.get_unchecked(..,ii)}.as_2d();
+            if w_ii != 0. {H -= w_ii * Q_ii};
+            let tmp = unsafe{q.get_unchecked(ii, 0)} - unsafe{H.get_unchecked(ii, 0)};
+
+            let numerator = soft_threshold_l1(tmp, alpha);
+            let denominator = unsafe{Q.get_unchecked(ii, ii)} + beta;
+            let new_w_ii = numerator / denominator;
+            *unsafe{w.get_mut_unchecked(ii, 0)} = new_w_ii;
+            if new_w_ii != 0. {
+                H += new_w_ii * Q_ii;
+            };
+            let d_w_ii = (new_w_ii - w_ii).abs();
+            if d_w_ii > d_w_max {d_w_max = d_w_ii};
+            if new_w_ii.abs() > w_max {w_max = new_w_ii};
+        };
+
+        if w_max == 0. || (d_w_max / w_max < tol) {
+            eprintln!("Converged after {}", iter_num);
+            break
+        }
+    }
+    w
+}
+
+
 /// Given all data, we start running a lstsq starting at position n and compute new coefficients recurisively.
 /// This will return all coefficients for rows >= n. This will only be used in Polars Expressions.
 pub fn faer_recursive_lstsq(

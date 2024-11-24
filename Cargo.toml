@@ -17,7 +17,7 @@ polars = {version = "0.44.2", features = ["performant", "lazy",
 "cum_agg", "round_series", "nightly","dtype-array", "dtype-struct", "fmt"], default-features = false}
 num = "0.4.1"
 faer = {version = "0.19", features = ["nightly"]}
-faer-ext = {version = "0.2.0", features = ["ndarray"]}
+faer-ext = { version = "0.2.0", features = ["nalgebra", "ndarray"] }
 serde = {version = "*", features=["derive"]}
 ndarray = {version="0.15.6"}
 hashbrown = {version = "0.15", features=["nightly"]}
@@ -36,6 +36,7 @@ numpy = "0.21"
 cfavml = {version = "0.3.0", features=["nightly"]}
 flate2 = {version = "1.0.34", git="https://github.com/rust-lang/flate2-rs.git", tag="1.0.34"}
 rayon = "1.10.0"
+nalgebra = "0.32.6"
 
 [patch.crates-io]
 flate2 = {version = "1.0.34", git="https://github.com/rust-lang/flate2-rs.git", tag="1.0.34"}
