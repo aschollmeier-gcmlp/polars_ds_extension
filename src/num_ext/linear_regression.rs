@@ -301,6 +301,7 @@ fn pl_lstsq(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series> {
                                 add_bias,
                                 kwargs.tol,
                                 kwargs.max_iter,
+                                None,
                             )
                         };
                         let pred = x_test * &candidate_coeffs;
@@ -329,6 +330,7 @@ fn pl_lstsq(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series> {
                     add_bias,
                     kwargs.tol,
                     kwargs.max_iter,
+                    None,
                 )
             };
             let mut builder: ListPrimitiveChunkedBuilder<Float64Type> =
@@ -589,7 +591,7 @@ fn pl_lstsq_pred(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series>
                 match LRMethods::from((kwargs.l1_reg, kwargs.l2_reg)) {
                     LRMethods::Normal => faer_solve_lstsq(x, y, solver),
                     LRMethods::L1 => {
-                        faer_coordinate_descent(x, y, kwargs.l1_reg, 0., add_bias, kwargs.tol, 2000)
+                        faer_coordinate_descent(x, y, kwargs.l1_reg, 0., add_bias, kwargs.tol, 2000, None)
                     }
                     LRMethods::L2 => faer_solve_ridge(x, y, kwargs.l2_reg, add_bias, solver),
                     LRMethods::ElasticNet => faer_coordinate_descent(
@@ -600,6 +602,7 @@ fn pl_lstsq_pred(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series>
                         add_bias,
                         kwargs.tol,
                         2000,
+                        None,
                     ),
                 }
             };

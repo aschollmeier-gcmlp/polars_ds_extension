@@ -440,6 +440,7 @@ impl LinearRegression for ElasticNet {
                 self.fit_bias,
                 self.tol,
                 self.max_iter,
+                None,
             )
         } else {
             faer_coordinate_descent(
@@ -450,6 +451,7 @@ impl LinearRegression for ElasticNet {
                 self.fit_bias,
                 self.tol,
                 self.max_iter,
+                None
             )
         };
 
@@ -694,6 +696,7 @@ pub fn faer_coordinate_descent(
     has_bias: bool,
     tol: f64,
     max_iter: usize,
+    warm_start_beta: Option<Mat<f64>>,
 ) -> Mat<f64> {
     let m = x.nrows() as f64;
     let ncols = x.ncols();
@@ -701,7 +704,7 @@ pub fn faer_coordinate_descent(
 
     let lambda_l1 = m * l1_reg;
 
-    let mut beta: Mat<f64> = Mat::zeros(ncols, 1);
+    let mut beta: Mat<f64> = warm_start_beta.clone().unwrap_or(Mat::zeros(ncols, 1));
     let mut converge = false;
 
     // compute column squared l2 norms.
