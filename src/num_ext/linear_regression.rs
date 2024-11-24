@@ -292,21 +292,7 @@ fn pl_lstsq(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series> {
                             )},
                             _ => panic!("Not supposed to reach this arm of split_num branch.")
                         };
-                        let candidate_coeffs = if kwargs.use_new_descent {
-                            let non_intercept_betas = sklearn_coordinate_descent(
-                                reg_val * x_train.nrows() as f64,
-                                reg_val * x_train.nrows() as f64,
-                                kwargs.tol, 
-                                kwargs.max_iter, 
-                                (x_train.get(.., ..x_train.ncols()-1).transpose() * &y_train).as_ref(), 
-                                (x_train.get(.., ..x_train.ncols()-1).transpose() * &x_train.get(.., ..x_train.ncols()-1)).as_ref(),
-                            );
-                            let n1 = x_train.ncols()-1;
-                            let xx = unsafe { x_train.get_unchecked(.., 0..n1) };
-                            let bb = unsafe { non_intercept_betas.get_unchecked(0..n1, ..) };
-                            let intercept = (y_train - xx * bb).sum() / x_train.nrows() as f64;
-                            concat![[non_intercept_betas], [mat![[intercept]]]]
-                        } else {
+                        let candidate_coeffs = {
                             faer_coordinate_descent(
                                 x_train.as_ref(),
                                 y_train.as_ref(),
@@ -334,21 +320,7 @@ fn pl_lstsq(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series> {
                 }
             ).unwrap().1;
             let chosen_penalty = min_mse_alpha * L1_RATIO;
-            let coeffs = if kwargs.use_new_descent {
-                let non_intercept_betas = sklearn_coordinate_descent(
-                    chosen_penalty * 36., 
-                    chosen_penalty * 36.,
-                    kwargs.tol, 
-                    kwargs.max_iter, 
-                    (x.get(.., ..x.ncols()-1).transpose() * y).as_ref(), 
-                    (x.get(.., ..x.ncols()-1).transpose() * x.get(.., ..x.ncols()-1)).as_ref(),
-                );
-                let n1 = x.ncols()-1;
-                let xx = unsafe { x.get_unchecked(.., 0..n1) };
-                let bb = unsafe { non_intercept_betas.get_unchecked(0..n1, ..) };
-                let intercept = (y - xx * bb).sum() / x.nrows() as f64;
-                concat![[non_intercept_betas], [mat![[intercept]]]]
-            } else { 
+            let coeffs = { 
                 faer_coordinate_descent(
                     x,
                     y,
