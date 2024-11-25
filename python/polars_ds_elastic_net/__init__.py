@@ -2,13 +2,13 @@ from __future__ import annotations
 import polars as pl
 from ._utils import str_to_expr
 
-from polars_ds.num import *  # noqa: F403
-from polars_ds.metrics import *  # noqa: F403
-from polars_ds.stats import *  # noqa: F403
-from polars_ds.string import *  # noqa: F403
-from polars_ds.ts_features import *  # noqa: F403
-from polars_ds.expr_knn import *  # noqa: F403
-from polars_ds.expr_linear import *  # noqa: F403
+from polars_ds_elastic_net.num import *  # noqa: F403
+from polars_ds_elastic_net.metrics import *  # noqa: F403
+from polars_ds_elastic_net.stats import *  # noqa: F403
+from polars_ds_elastic_net.string import *  # noqa: F403
+from polars_ds_elastic_net.ts_features import *  # noqa: F403
+from polars_ds_elastic_net.expr_knn import *  # noqa: F403
+from polars_ds_elastic_net.expr_linear import *  # noqa: F403
 # from polars_ds.query_balltree import *  # noqa: F403
 
 

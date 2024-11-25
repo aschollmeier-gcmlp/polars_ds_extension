@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 import polars as pl
 import numpy as np
-import polars_ds as pds
+import polars_ds_elastic_net as pds
 from polars.testing import assert_frame_equal, assert_series_equal
 
 

@@ -17,7 +17,7 @@ import numpy as np
 from typing import List, Tuple
 from .type_alias import LRSolverMethods, NullPolicy, PolarsFrame
 
-from polars_ds._polars_ds import PyLR, PyElasticNet, PyOnlineLR
+from polars_ds_elastic_net._polars_ds import PyLR, PyElasticNet, PyOnlineLR
 
 import sys
 

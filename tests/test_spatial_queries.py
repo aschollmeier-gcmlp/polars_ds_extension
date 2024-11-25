@@ -1,6 +1,6 @@
-import polars_ds as pds
+import polars_ds_elastic_net as pds
 import numpy as np
-from polars_ds.spatial import KDTree as KDT
+from polars_ds_elastic_net.spatial import KDTree as KDT
 from scipy.spatial import KDTree
 
 

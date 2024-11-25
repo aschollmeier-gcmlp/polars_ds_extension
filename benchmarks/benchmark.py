@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Callable
 
 import polars as pl
-import polars_ds as pds
+import polars_ds_elastic_net as pds
 
 BASE_PATH = Path(__file__).resolve().parents[0]
 

@@ -113,7 +113,7 @@ def downsample(
 
     Example
     -------
-    >>> import polars_ds.sample as sa
+    >>> import polars_ds_elastic_net.sample as sa
     >>> df.group_by("y").len().sort("y")
     shape: (4, 2)
     ┌─────┬───────┐

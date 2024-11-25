@@ -6,7 +6,7 @@ and data of relatively small dimension (<30).
 from __future__ import annotations
 
 import numpy as np
-from polars_ds._polars_ds import PyKDT
+from polars_ds_elastic_net._polars_ds import PyKDT
 from .type_alias import KdtDistance
 
 import sys

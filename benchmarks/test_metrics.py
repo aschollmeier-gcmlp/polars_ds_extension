@@ -1,5 +1,5 @@
 import polars as pl
-import polars_ds as pds
+import polars_ds_elastic_net as pds
 import pytest
 import scipy.stats
 import sklearn.metrics
