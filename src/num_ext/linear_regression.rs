@@ -7,7 +7,7 @@ use core::f64;
 use faer::{concat, prelude::*};
 use faer_ext::{IntoFaer, IntoNdarray};
 use itertools::Itertools;
-use ndarray::{s, Array2, Axis};
+use ndarray::{s, Array, Array2, Axis};
 use polars::prelude as pl;
 use polars::prelude::*;
 use pyo3_polars::derive::polars_expr;
@@ -230,69 +230,109 @@ fn pl_lstsq(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series> {
             );
             let alphas = ndarray::Array::geomspace(alpha_max, (alpha_max * EPSILON).max(f64::MIN_POSITIVE), NUM_ALPHAS).unwrap();
             const NUM_SPLITS: usize = 5;
-            let mses: Vec<f64> = alphas.to_vec().into_par_iter().map(
-                |alpha| {
-                    let reg_val: f64 = alpha * L1_RATIO; // l1 and l2, since L1_RATIO is fixed at 0.5 for now
-                    let mut candidate_mse = 0.;
-                    for split_num in 1..=NUM_SPLITS {
-                        let (x_train, y_train, x_test, y_test) = match split_num % NUM_SPLITS {
-                            0 => {(
-                                x.subrows(8, 36 - 8).to_owned(),
-                                y.subrows(8, 36 - 8).to_owned(),
-                                x.subrows(0, 8).to_owned(),
-                                y.subrows(0, 8).to_owned()
-                            )},
-                            1 => {
-                                let x_train1 = x.subrows(0, 8);
-                                let y_train1 = y.subrows(0, 8);
-                                let x_train2 = x.subrows(15, 36-15);
-                                let y_train2 = y.subrows(15, 36-15);
-                                let x_train_all = concat![[x_train1], [x_train2]];
-                                let y_train_all = concat![[y_train1], [y_train2]];
-                                (
-                                    x_train_all,
-                                    y_train_all,
-                                    x.subrows(8, 7).to_owned(),
-                                    y.subrows(8, 7).to_owned(),
-                                )
-                            },
-                            2 => {
-                                let x_train1 = x.subrows(0, 8+7);
-                                let y_train1 = y.subrows(0, 8+7);
-                                let x_train2 = x.subrows(22, 36-22);
-                                let y_train2 = y.subrows(22, 36-22);
-                                let x_train_all = concat![[x_train1], [x_train2]];
-                                let y_train_all = concat![[y_train1], [y_train2]];
-                                (
-                                    x_train_all,
-                                    y_train_all,
-                                    x.subrows(15, 7).to_owned(),
-                                    y.subrows(15, 7).to_owned(),
-                                )
-                            },
-                            3 => {
-                                let x_train1 = x.subrows(0, 8+7*2);
-                                let y_train1 = y.subrows(0, 8+7*2);
-                                let x_train2 = x.subrows(29, 36-29);
-                                let y_train2 = y.subrows(29, 36-29);
-                                let x_train_all = concat![[x_train1], [x_train2]];
-                                let y_train_all = concat![[y_train1], [y_train2]];
-                                (
-                                    x_train_all,
-                                    y_train_all,
-                                    x.subrows(22, 7).to_owned(),
-                                    y.subrows(22, 7).to_owned(),
-                                )
-                            },
-                            4 => {(
-                                x.subrows(0, 36 - 7).to_owned(),
-                                y.subrows(0, 36 - 7).to_owned(),
-                                x.subrows(29, 7).to_owned(),
-                                y.subrows(29, 7).to_owned()
-                            )},
-                            _ => panic!("Not supposed to reach this arm of split_num branch.")
-                        };
-                        let candidate_coeffs = {
+            let mut folds: Vec<(Mat<f64>, Mat<f64>, Mat<f64>, Mat<f64>)> = Vec::new();
+            for split_num in 1..=NUM_SPLITS {
+                let (x_train, y_train, x_test, y_test) = match split_num % NUM_SPLITS {
+                    0 => {(
+                        x.subrows(8, 36 - 8).to_owned(),
+                        y.subrows(8, 36 - 8).to_owned(),
+                        x.subrows(0, 8).to_owned(),
+                        y.subrows(0, 8).to_owned()
+                    )},
+                    1 => {
+                        let x_train1 = x.subrows(0, 8);
+                        let y_train1 = y.subrows(0, 8);
+                        let x_train2 = x.subrows(15, 36-15);
+                        let y_train2 = y.subrows(15, 36-15);
+                        let x_train_all = concat![[x_train1], [x_train2]];
+                        let y_train_all = concat![[y_train1], [y_train2]];
+                        (
+                            x_train_all,
+                            y_train_all,
+                            x.subrows(8, 7).to_owned(),
+                            y.subrows(8, 7).to_owned(),
+                        )
+                    },
+                    2 => {
+                        let x_train1 = x.subrows(0, 8+7);
+                        let y_train1 = y.subrows(0, 8+7);
+                        let x_train2 = x.subrows(22, 36-22);
+                        let y_train2 = y.subrows(22, 36-22);
+                        let x_train_all = concat![[x_train1], [x_train2]];
+                        let y_train_all = concat![[y_train1], [y_train2]];
+                        (
+                            x_train_all,
+                            y_train_all,
+                            x.subrows(15, 7).to_owned(),
+                            y.subrows(15, 7).to_owned(),
+                        )
+                    },
+                    3 => {
+                        let x_train1 = x.subrows(0, 8+7*2);
+                        let y_train1 = y.subrows(0, 8+7*2);
+                        let x_train2 = x.subrows(29, 36-29);
+                        let y_train2 = y.subrows(29, 36-29);
+                        let x_train_all = concat![[x_train1], [x_train2]];
+                        let y_train_all = concat![[y_train1], [y_train2]];
+                        (
+                            x_train_all,
+                            y_train_all,
+                            x.subrows(22, 7).to_owned(),
+                            y.subrows(22, 7).to_owned(),
+                        )
+                    },
+                    4 => {(
+                        x.subrows(0, 36 - 7).to_owned(),
+                        y.subrows(0, 36 - 7).to_owned(),
+                        x.subrows(29, 7).to_owned(),
+                        y.subrows(29, 7).to_owned()
+                    )},
+                    _ => panic!("Not supposed to reach this arm of split_num branch.")
+                };
+                folds.push((x_train, y_train, x_test, y_test));
+            }
+            let mut mse_contribs: Vec<ndarray::ArrayBase<ndarray::OwnedRepr<f64>, ndarray::Dim<[usize; 1]>>> = Vec::new();
+            folds.into_par_iter().map(
+                |(x_train, y_train, x_test, y_test)| {
+                    let mut v: ndarray::ArrayBase<ndarray::OwnedRepr<f64>, ndarray::Dim<[usize; 1]>> = Array::zeros(NUM_ALPHAS);
+                    // let mut warm_start_beta = None;
+                    let xtx: Mat<f64> = x_train.transpose() * &x_train;
+                    let xty: Mat<f64> = x_train.transpose() * &y_train;
+                    let m: f64 = x_train.nrows() as f64;
+                    let norms = x_train
+                        .col_iter()
+                        .map(|c| c.squared_norm_l2())
+                        .collect::<Vec<_>>();
+                
+
+                    // Begin Gram matrix descent stuff
+                    let n1 = x_train.ncols() - 1;
+                    let x_train_arr: ndarray::ArrayBase<ndarray::ViewRepr<&f64>, ndarray::Dim<[usize; 2]>> = x_train.as_ref().into_ndarray().slice_move(s![.., ..n1]);
+                    let x_train_offset = x_train_arr.mean_axis(Axis(0)).unwrap();
+                    let x_train_centered = &x_train_arr - &x_train_offset;
+                    let x_train_centered_mat: MatRef<'_, f64> = x_train_centered.view().into_faer();
+
+                    let y_bar = y_train.as_ref().into_ndarray().mean().unwrap();
+                    let y_train_centered_mat = &y_train - Mat::<f64>::ones(y_train.nrows(), 1) * y_bar;
+
+                    let q = x_train_centered_mat.transpose() * y_train_centered_mat;
+                    let Q: Mat<f64> = x_train_centered_mat.transpose() * x_train_centered_mat;
+                    // End Gram matrix descent stuff
+                    for (i, alpha) in alphas.iter().enumerate() {
+                        let reg_val = alpha * L1_RATIO;
+                        let candidate_coeffs = if kwargs.use_new_descent {
+                            let non_intercept_betas = sklearn_coordinate_descent(
+                                reg_val * m,
+                                reg_val * m,
+                                kwargs.tol, 
+                                kwargs.max_iter, 
+                                q.as_ref(), 
+                                Q.as_ref()
+                            );
+                            let intercept = (y_bar - &x_train_offset.dot(&non_intercept_betas.as_ref().into_ndarray())).get(0).unwrap().to_owned();
+                            let res = concat![[non_intercept_betas], [mat![[intercept]]]];
+                            res
+                        } else {
                             faer_coordinate_descent(
                                 x_train.as_ref(),
                                 y_train.as_ref(),
@@ -302,15 +342,26 @@ fn pl_lstsq(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series> {
                                 kwargs.tol,
                                 kwargs.max_iter,
                                 None,
+                                Some(rand::thread_rng()),
+                                xtx.as_ref(),
+                                xty.as_ref(),
+                                norms.iter().map(|elem| elem + m * reg_val).collect_vec(),
                             )
                         };
-                        let pred = x_test * &candidate_coeffs;
-                        let resid = y_test - &pred;
-                        candidate_mse += resid.squared_norm_l2();
+                        let pred = &x_test * &candidate_coeffs;
+                        let resid = &y_test - &pred;
+                        let this_mse = resid.squared_norm_l2() / resid.nrows() as f64;
+                        v[i] = this_mse;
                     }
-                    candidate_mse
+                    v
                 }
-            ).collect();
+            ).collect_into_vec(mse_contribs.as_mut());
+            let mut mses: ndarray::ArrayBase<ndarray::OwnedRepr<f64>, ndarray::Dim<[usize; 1]>> = Array::zeros(NUM_ALPHAS);
+            for partial in mse_contribs {
+                for (i, contrib) in partial.iter().enumerate() {
+                    mses[i] += contrib
+                }
+            }
             let min_mse_alpha = mses.iter().zip(alphas).min_by(
                 |a, b| {
                     if a.0 < b.0 {
@@ -320,8 +371,43 @@ fn pl_lstsq(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series> {
                     }
                 }
             ).unwrap().1;
+            // eprintln!("min_mse_alpha: {}", min_mse_alpha);
+
             let chosen_penalty = min_mse_alpha * L1_RATIO;
-            let coeffs = { 
+            let m = x.nrows() as f64;
+
+
+            // Begin Gram matrix descent stuff
+            let n1 = x.ncols() - 1;
+            let x_arr: ndarray::ArrayBase<ndarray::ViewRepr<&f64>, ndarray::Dim<[usize; 2]>> = x.as_ref().into_ndarray().slice_move(s![.., ..n1]);
+            let x_offset = x_arr.mean_axis(Axis(0)).unwrap();
+            let x_centered = &x_arr - &x_offset;
+            let x_centered_mat: MatRef<'_, f64> = x_centered.view().into_faer();
+
+            let y_bar = y.as_ref().into_ndarray().mean().unwrap();
+            let y_centered_mat = &y - Mat::<f64>::ones(y.nrows(), 1) * y_bar;
+
+            let q = x_centered_mat.transpose() * y_centered_mat;
+            let Q: Mat<f64> = x_centered_mat.transpose() * x_centered_mat;
+            // End Gram matrix descent stuff
+
+            let norms = x
+                .col_iter()
+                .map(|c| c.squared_norm_l2())
+                .collect::<Vec<_>>();
+            let coeffs = if kwargs.use_new_descent {
+                let non_intercept_betas = sklearn_coordinate_descent(
+                    chosen_penalty * m,
+                    chosen_penalty * m,
+                    kwargs.tol, 
+                    kwargs.max_iter, 
+                    q.as_ref(), 
+                    Q.as_ref()
+                );
+                let intercept = (y_bar - &x_offset.dot(&non_intercept_betas.as_ref().into_ndarray())).get(0).unwrap().to_owned();
+                let res = concat![[non_intercept_betas], [mat![[intercept]]]];
+                res
+            } else { 
                 faer_coordinate_descent(
                     x,
                     y,
@@ -331,6 +417,10 @@ fn pl_lstsq(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series> {
                     kwargs.tol,
                     kwargs.max_iter,
                     None,
+                    None,
+                    (x.transpose() * x).as_ref(),
+                    (x.transpose() * y).as_ref(),
+                    norms.iter().map(|elem| elem + m * chosen_penalty).collect_vec(),
                 )
             };
             let mut builder: ListPrimitiveChunkedBuilder<Float64Type> =
@@ -559,89 +649,6 @@ fn pl_lstsq_w_rcond(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Seri
                 &[coeffs_ca.into_column(), coeffs_sv.into_column()],
             )?;
             Ok(ca.into_series())
-        }
-        Err(e) => Err(e),
-    }
-}
-
-#[polars_expr(output_type_func=pred_residue_output)]
-fn pl_lstsq_pred(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series> {
-    let add_bias = kwargs.bias;
-    let null_policy = NullPolicy::try_from(kwargs.null_policy)
-        .map_err(|e| PolarsError::ComputeError(e.into()))?;
-
-    let solver = kwargs.solver.as_str().into();
-    let weighted = kwargs.weighted;
-    let data_for_matrix = if weighted { &inputs[1..] } else { inputs };
-
-    match series_to_mat_for_lstsq(data_for_matrix, add_bias, null_policy.clone()) {
-        Ok((mat, mask)) => {
-            let y = mat.slice(s![.., 0..1]).into_faer();
-            let x = mat.slice(s![.., 1..]).into_faer();
-            let coeffs = if weighted {
-                let weights = inputs[0].f64().unwrap();
-                let weights = weights.cont_slice().unwrap();
-                if weights.len() != mat.nrows() {
-                    return Err(PolarsError::ComputeError(
-                        "Length of weights and data in X must be the same.".into(),
-                    ));
-                }
-                faer_weighted_lstsq(x, y, weights, solver)
-            } else {
-                match LRMethods::from((kwargs.l1_reg, kwargs.l2_reg)) {
-                    LRMethods::Normal => faer_solve_lstsq(x, y, solver),
-                    LRMethods::L1 => {
-                        faer_coordinate_descent(x, y, kwargs.l1_reg, 0., add_bias, kwargs.tol, 2000, None)
-                    }
-                    LRMethods::L2 => faer_solve_ridge(x, y, kwargs.l2_reg, add_bias, solver),
-                    LRMethods::ElasticNet => faer_coordinate_descent(
-                        x,
-                        y,
-                        kwargs.l1_reg,
-                        kwargs.l2_reg,
-                        add_bias,
-                        kwargs.tol,
-                        2000,
-                        None,
-                    ),
-                }
-            };
-
-            let pred = x * &coeffs;
-            let resid = y - &pred;
-            let pred = pred.col_as_slice(0);
-            let resid = resid.col_as_slice(0);
-            // If null policy is raise and we have nulls, we won't reach here
-            // If null policy is raise and we are here, then (!&mask).any() will be false.
-            // No need to check null policy here.
-            // In the mask, true means is not null. In !&mask, true means is null
-            let (p, r) = if (!&mask).any() {
-                let mut p_builder: PrimitiveChunkedBuilder<Float64Type> =
-                    PrimitiveChunkedBuilder::new("pred".into(), mask.len());
-                let mut r_builder: PrimitiveChunkedBuilder<Float64Type> =
-                    PrimitiveChunkedBuilder::new("resid".into(), mask.len());
-                let mut i: usize = 0;
-                for mm in mask.into_no_null_iter() {
-                    // mask is always non-null, mm = true means it is not null
-                    if mm {
-                        p_builder.append_value(pred[i]);
-                        r_builder.append_value(resid[i]);
-                        i += 1;
-                    } else {
-                        p_builder.append_value(f64::NAN);
-                        r_builder.append_value(f64::NAN);
-                    }
-                }
-                (p_builder.finish(), r_builder.finish())
-            } else {
-                let pred = Float64Chunked::from_slice("pred".into(), pred);
-                let residue = Float64Chunked::from_slice("resid".into(), resid);
-                (pred, residue)
-            };
-            let p = p.into_series();
-            let r = r.into_series();
-            let out = StructChunked::from_series("".into(), p.len(), [&p, &r].into_iter())?;
-            Ok(out.into_series())
         }
         Err(e) => Err(e),
     }

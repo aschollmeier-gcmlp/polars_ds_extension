@@ -2,6 +2,7 @@
 use super::LinalgErrors;
 use core::f64;
 use faer::{prelude::*, Side};
+use rand::{rngs::ThreadRng, Rng};
 use std::ops::Neg;
 
 #[derive(Clone, Copy, Default)]
@@ -415,68 +416,6 @@ impl ElasticNet {
     }
 }
 
-impl LinearRegression for ElasticNet {
-    fn coefficients(&self) -> MatRef<f64> {
-        self.coefficients.as_ref()
-    }
-
-    fn bias(&self) -> f64 {
-        self.bias
-    }
-
-    fn fit_bias(&self) -> bool {
-        self.fit_bias
-    }
-
-    fn fit_unchecked(&mut self, X: MatRef<f64>, y: MatRef<f64>) {
-        let all_coefficients = if self.fit_bias {
-            let ones = Mat::full(X.nrows(), 1, 1.0);
-            let new_x = faer::concat![[X, ones]];
-            faer_coordinate_descent(
-                new_x.as_ref(),
-                y,
-                self.l1_reg,
-                self.l2_reg,
-                self.fit_bias,
-                self.tol,
-                self.max_iter,
-                None,
-            )
-        } else {
-            faer_coordinate_descent(
-                X,
-                y,
-                self.l1_reg,
-                self.l2_reg,
-                self.fit_bias,
-                self.tol,
-                self.max_iter,
-                None
-            )
-        };
-
-        if self.fit_bias {
-            let n = all_coefficients.nrows();
-            let slice = all_coefficients.col_as_slice(0);
-            self.coefficients =
-                faer::mat::from_row_major_slice(&slice[..n - 1], n - 1, 1).to_owned();
-            self.bias = slice[n - 1];
-        } else {
-            self.coefficients = all_coefficients;
-        }
-    }
-
-    fn fit(&mut self, X: MatRef<f64>, y: MatRef<f64>) -> Result<(), LinalgErrors> {
-        if X.nrows() != y.nrows() {
-            return Err(LinalgErrors::DimensionMismatch);
-        } else if X.nrows() == 0 || y.nrows() == 0 {
-            return Err(LinalgErrors::NotEnoughData);
-        } // Ok to have nrows < ncols
-        self.fit_unchecked(X, y);
-        Ok(())
-    }
-}
-
 //------------------------------------ The Basic Functions ---------------------------------------
 
 /// Returns the coefficients for lstsq as a nrows x 1 matrix
@@ -697,33 +636,32 @@ pub fn faer_coordinate_descent(
     tol: f64,
     max_iter: usize,
     warm_start_beta: Option<Mat<f64>>,
+    rng: Option<ThreadRng>,
+    xtx: MatRef<f64>,
+    xty: MatRef<f64>,
+    norms: Vec<f64>,
 ) -> Mat<f64> {
     let m = x.nrows() as f64;
     let ncols = x.ncols();
     let n1 = ncols.abs_diff(has_bias as usize);
 
     let lambda_l1 = m * l1_reg;
-
+    let mut rng = rng.unwrap_or(rand::thread_rng());
     let mut beta: Mat<f64> = warm_start_beta.clone().unwrap_or(Mat::zeros(ncols, 1));
     let mut converge = false;
 
-    // compute column squared l2 norms.
-    // (In the case of Elastic net, squared l2 norms + l2 regularization factor)
-    let norms = x
-        .col_iter()
-        .map(|c| c.squared_norm_l2() + m * l2_reg)
-        .collect::<Vec<_>>();
-
-    let xty = x.transpose() * y;
-    let xtx = x.transpose() * x;
-
     // Random selection often leads to faster convergence?
     for _ in 0..max_iter {
+        let mut max_coeff_size = 0f64;
         let mut max_change = 0f64;
-        for j in 0..n1 {
+        for _j in 0..n1 {
+            let j = rng.gen_range(0..n1);
             // temporary set beta(j, 0) to 0.
             // Safe. The index is valid and the value is initialized.
             let before = *unsafe { beta.get_unchecked(j, 0) };
+            if before.abs() > max_coeff_size {
+                max_coeff_size = before.abs()
+            }
             *unsafe { beta.get_mut_unchecked(j, 0) } = 0f64;
             let xtx_j = unsafe { xtx.get_unchecked(j..j + 1, ..) };
 
@@ -743,7 +681,7 @@ pub fn faer_coordinate_descent(
             let ss = (y - xx * bb).sum() / m;
             *unsafe { beta.get_mut_unchecked(n1, 0) } = ss;
         }
-        converge = max_change < tol;
+        converge = (max_change / max_coeff_size) < tol;
         if converge {
             break;
         }
@@ -802,7 +740,7 @@ pub fn sklearn_coordinate_descent(
         };
 
         if w_max == 0. || (d_w_max / w_max < tol) {
-            eprintln!("Converged after {}", iter_num);
+            // eprintln!("Converged after {}", iter_num);
             break
         }
     }
