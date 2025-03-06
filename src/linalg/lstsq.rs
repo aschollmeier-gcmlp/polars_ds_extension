@@ -2,6 +2,7 @@
 use super::LinalgErrors;
 use core::f64;
 use faer::{prelude::*, Side};
+use rand::{rngs::ThreadRng, Rng};
 use std::ops::Neg;
 
 #[derive(Clone, Copy, Default)]
@@ -415,66 +416,6 @@ impl ElasticNet {
     }
 }
 
-impl LinearRegression for ElasticNet {
-    fn coefficients(&self) -> MatRef<f64> {
-        self.coefficients.as_ref()
-    }
-
-    fn bias(&self) -> f64 {
-        self.bias
-    }
-
-    fn fit_bias(&self) -> bool {
-        self.fit_bias
-    }
-
-    fn fit_unchecked(&mut self, X: MatRef<f64>, y: MatRef<f64>) {
-        let all_coefficients = if self.fit_bias {
-            let ones = Mat::full(X.nrows(), 1, 1.0);
-            let new_x = faer::concat![[X, ones]];
-            faer_coordinate_descent(
-                new_x.as_ref(),
-                y,
-                self.l1_reg,
-                self.l2_reg,
-                self.fit_bias,
-                self.tol,
-                self.max_iter,
-            )
-        } else {
-            faer_coordinate_descent(
-                X,
-                y,
-                self.l1_reg,
-                self.l2_reg,
-                self.fit_bias,
-                self.tol,
-                self.max_iter,
-            )
-        };
-
-        if self.fit_bias {
-            let n = all_coefficients.nrows();
-            let slice = all_coefficients.col_as_slice(0);
-            self.coefficients =
-                faer::mat::from_row_major_slice(&slice[..n - 1], n - 1, 1).to_owned();
-            self.bias = slice[n - 1];
-        } else {
-            self.coefficients = all_coefficients;
-        }
-    }
-
-    fn fit(&mut self, X: MatRef<f64>, y: MatRef<f64>) -> Result<(), LinalgErrors> {
-        if X.nrows() != y.nrows() {
-            return Err(LinalgErrors::DimensionMismatch);
-        } else if X.nrows() == 0 || y.nrows() == 0 {
-            return Err(LinalgErrors::NotEnoughData);
-        } // Ok to have nrows < ncols
-        self.fit_unchecked(X, y);
-        Ok(())
-    }
-}
-
 //------------------------------------ The Basic Functions ---------------------------------------
 
 /// Returns the coefficients for lstsq as a nrows x 1 matrix
@@ -694,33 +635,33 @@ pub fn faer_coordinate_descent(
     has_bias: bool,
     tol: f64,
     max_iter: usize,
+    warm_start_beta: Option<Mat<f64>>,
+    rng: Option<ThreadRng>,
+    xtx: MatRef<f64>,
+    xty: MatRef<f64>,
+    norms: Vec<f64>,
 ) -> Mat<f64> {
     let m = x.nrows() as f64;
     let ncols = x.ncols();
     let n1 = ncols.abs_diff(has_bias as usize);
 
     let lambda_l1 = m * l1_reg;
-
-    let mut beta: Mat<f64> = Mat::zeros(ncols, 1);
+    let mut rng = rng.unwrap_or(rand::thread_rng());
+    let mut beta: Mat<f64> = warm_start_beta.clone().unwrap_or(Mat::zeros(ncols, 1));
     let mut converge = false;
-
-    // compute column squared l2 norms.
-    // (In the case of Elastic net, squared l2 norms + l2 regularization factor)
-    let norms = x
-        .col_iter()
-        .map(|c| c.squared_norm_l2() + m * l2_reg)
-        .collect::<Vec<_>>();
-
-    let xty = x.transpose() * y;
-    let xtx = x.transpose() * x;
 
     // Random selection often leads to faster convergence?
     for _ in 0..max_iter {
+        let mut max_coeff_size = 0f64;
         let mut max_change = 0f64;
-        for j in 0..n1 {
+        for _j in 0..n1 {
+            let j = rng.gen_range(0..n1);
             // temporary set beta(j, 0) to 0.
             // Safe. The index is valid and the value is initialized.
             let before = *unsafe { beta.get_unchecked(j, 0) };
+            if before.abs() > max_coeff_size {
+                max_coeff_size = before.abs()
+            }
             *unsafe { beta.get_mut_unchecked(j, 0) } = 0f64;
             let xtx_j = unsafe { xtx.get_unchecked(j..j + 1, ..) };
 
@@ -740,7 +681,7 @@ pub fn faer_coordinate_descent(
             let ss = (y - xx * bb).sum() / m;
             *unsafe { beta.get_mut_unchecked(n1, 0) } = ss;
         }
-        converge = max_change < tol;
+        converge = (max_change / max_coeff_size) < tol;
         if converge {
             break;
         }
@@ -754,6 +695,58 @@ pub fn faer_coordinate_descent(
 
     beta
 }
+
+/// Reference:
+/// https://github.com/scikit-learn/scikit-learn/blob/46a7c9a5e4fe88dfdfd371bf36477f03498a3390/sklearn/linear_model/_cd_fast.pyx#L560
+#[inline(always)]
+pub fn sklearn_coordinate_descent(
+    l1_reg: f64,
+    l2_reg: f64,
+    tol: f64,
+    max_iter: usize,
+    q: MatRef<f64>, // X^T y
+    Q: MatRef<f64>, // Gram matrix (X^T X)
+) -> Mat<f64> {
+    let n_features = Q.shape().0;
+    // Rename penalties to be consistent with original implementation.
+    let alpha = l1_reg;
+    let beta = l2_reg;
+
+    let mut w: Mat<f64> = Mat::zeros(n_features, 1); // initialize weights;
+    let mut H = Q * &w;
+    for iter_num in 0..max_iter {
+        let mut w_max = 0.;
+        let mut d_w_max = 0.;
+        for ii in 0..n_features {
+            let Q_ii_ii = *unsafe { Q.get_unchecked(ii, ii)};
+            if Q_ii_ii == 0. {
+                continue
+            }
+            let w_ii = *unsafe {w.get_unchecked(ii, 0)};
+            let Q_ii = unsafe{Q.get_unchecked(..,ii)}.as_2d();
+            if w_ii != 0. {H -= w_ii * Q_ii};
+            let tmp = unsafe{q.get_unchecked(ii, 0)} - unsafe{H.get_unchecked(ii, 0)};
+
+            let numerator = soft_threshold_l1(tmp, alpha);
+            let denominator = unsafe{Q.get_unchecked(ii, ii)} + beta;
+            let new_w_ii = numerator / denominator;
+            *unsafe{w.get_mut_unchecked(ii, 0)} = new_w_ii;
+            if new_w_ii != 0. {
+                H += new_w_ii * Q_ii;
+            };
+            let d_w_ii = (new_w_ii - w_ii).abs();
+            if d_w_ii > d_w_max {d_w_max = d_w_ii};
+            if new_w_ii.abs() > w_max {w_max = new_w_ii};
+        };
+
+        if w_max == 0. || (d_w_max / w_max < tol) {
+            // eprintln!("Converged after {}", iter_num);
+            break
+        }
+    }
+    w
+}
+
 
 /// Given all data, we start running a lstsq starting at position n and compute new coefficients recurisively.
 /// This will return all coefficients for rows >= n. This will only be used in Polars Expressions.

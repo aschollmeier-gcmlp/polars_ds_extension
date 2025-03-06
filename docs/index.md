@@ -18,9 +18,10 @@ It stands on the shoulders of the great **Polars** dataframe. You can see [examp
 
 ```python
 import polars as pl
-import polars_ds as pds
+import polars_ds_elastic_net as pds
+
 # Parallel evaluation of multiple ML metrics on different segments of data
-df.lazy().group_by("segments").agg( 
+df.lazy().group_by("segments").agg(
     pds.query_roc_auc("actual", "predicted").alias("roc_auc"),
     pds.query_log_loss("actual", "predicted").alias("log_loss"),
 ).collect()
@@ -41,33 +42,37 @@ Tabular Machine Learning Data Transformation Pipeline
 ```Python
 import polars as pl
 import polars.selectors as cs
-from polars_ds.pipeline import Pipeline, Blueprint
+from polars_ds_elastic_net.pipeline import Pipeline, Blueprint
 
 bp = (
     # If we specify a target, then target will be excluded from any transformations.
-    Blueprint(df, name = "example", target = "approved") 
-    .lowercase() # lowercase all columns
-    .select(cs.numeric() | cs.by_name(["gender", "employer_category1", "city_category"]))
-    .linear_impute(features = ["var1", "existing_emi"], target = "loan_period") 
-    .impute(["existing_emi"], method = "median")
-    .append_expr( # generate some features
+    Blueprint(df, name="example", target="approved")
+    .lowercase()  # lowercase all columns
+    .select(
+        cs.numeric() | cs.by_name(["gender", "employer_category1", "city_category"]))
+    .linear_impute(features=["var1", "existing_emi"], target="loan_period")
+    .impute(["existing_emi"], method="median")
+    .append_expr(  # generate some features
         pl.col("existing_emi").log1p().alias("existing_emi_log1p"),
         pl.col("loan_amount").log1p().alias("loan_amount_log1p"),
         pl.col("loan_amount").sqrt().alias("loan_amount_sqrt"),
-        pl.col("loan_amount").shift(-1).alias("loan_amount_lag_1") # any kind of lag transform
+        pl.col("loan_amount").shift(-1).alias("loan_amount_lag_1")
+        # any kind of lag transform
     )
-    .scale( 
-        cs.numeric().exclude(["var1", "existing_emi_log1p"]), method = "standard"
-    ) # Scale the columns up to this point. The columns below won't be scaled
-    .append_expr( # Add missing flags
-        pl.col("employer_category1").is_null().cast(pl.UInt8).alias("employer_category1_is_missing")
+    .scale(
+        cs.numeric().exclude(["var1", "existing_emi_log1p"]), method="standard"
+    )  # Scale the columns up to this point. The columns below won't be scaled
+    .append_expr(  # Add missing flags
+        pl.col("employer_category1").is_null().cast(pl.UInt8).alias(
+            "employer_category1_is_missing")
     )
     .one_hot_encode("gender", drop_first=True)
     .woe_encode("city_category")
-    .target_encode("employer_category1", min_samples_leaf = 20, smoothing = 10.0) # same as above
+    .target_encode("employer_category1", min_samples_leaf=20, smoothing=10.0)
+# same as above
 )
 
-pipe:Pipeline = bp.materialize()
+pipe: Pipeline = bp.materialize()
 # Check out the result in our example notebooks! (examples/pipeline.ipynb)
 df_transformed = pipe.transform(df)
 df_transformed.head()
@@ -188,7 +193,7 @@ And more!
 ## Getting Started
 
 ```python
-import polars_ds as pds
+import polars_ds_elastic_net as pds
 ```
 
 To make full use of the Diagnosis module, do

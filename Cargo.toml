@@ -1,10 +1,10 @@
 [package]
-name = "polars_ds"
-version = "0.6.3"
+name = "polars_ds_elastic_net"
+version = "0.0.1"
 edition = "2021"
 
 [lib]
-name = "_polars_ds"
+name = "_polars_ds_elastic_net"
 crate-type = ["cdylib"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -14,10 +14,10 @@ pyo3 = {version = "0.21", features = ["abi3-py39", "extension-module"]}
 pyo3-polars = {version = "0.18", features = ["derive", "dtype-array", "dtype-struct"]}
 polars = {version = "0.44.2", features = ["performant", "lazy", 
 "diff", "array_count", "abs", "cross_join", "rank", "ndarray", "log", 
-"cum_agg", "round_series", "nightly","dtype-array", "dtype-struct"], default-features = false}
+"cum_agg", "round_series", "nightly","dtype-array", "dtype-struct", "fmt"], default-features = false}
 num = "0.4.1"
 faer = {version = "0.19", features = ["nightly"]}
-faer-ext = {version = "0.2.0", features = ["ndarray"]}
+faer-ext = { version = "0.2.0", features = ["nalgebra", "ndarray"] }
 serde = {version = "*", features=["derive"]}
 ndarray = {version="0.15.6"}
 hashbrown = {version = "0.15", features=["nightly"]}
@@ -34,6 +34,12 @@ unicode-normalization = "0.1.23"
 # Update to 0.22, when pyo3-polars supports pyo3 0.22
 numpy = "0.21" 
 cfavml = {version = "0.3.0", features=["nightly"]}
+flate2 = {version = "1.0.34", git="https://github.com/rust-lang/flate2-rs.git", tag="1.0.34"}
+rayon = "1.10.0"
+nalgebra = "0.32.6"
+
+[patch.crates-io]
+flate2 = {version = "1.0.34", git="https://github.com/rust-lang/flate2-rs.git", tag="1.0.34"}
 
 # Remove this part once I update polars dependency
 [target.'cfg(target_os = "linux")'.dependencies]
